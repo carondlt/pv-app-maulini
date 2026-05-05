@@ -1,6 +1,6 @@
 import streamlit as st
 from docx import Document
-from docx.shared import RGBColor, Pt, Inches
+from docx.shared import RGBColor, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -19,7 +19,7 @@ def set_cell_background(cell, fill_color):
     tcPr.append(shd)
 
 # --- CONFIGURATION DE L'APPLICATION ---
-st.set_page_config(page_title="App PV Maulini", layout="wide")
+st.set_page_config(page_title="App PV Universel", layout="wide")
 st.title("⚡ Assistant PV de Séance")
 
 # --- 1. PARAMÈTRES GÉNÉRAUX & MÉMOIRE ---
@@ -27,10 +27,19 @@ with st.sidebar:
     st.header("📂 1. Infos du projet & Historique")
     
     # Informations de la séance
-    nom_projet = st.text_input("Nom du Projet", "Construction Bas-Carbone")
+    nom_projet = st.text_input("Nom du Projet", "Projet Alpha")
+    numero_pv = st.number_input("Numéro du PV", min_value=1, value=1, step=1)
     date_seance = st.date_input("Date de la séance", datetime.date.today())
     lieu = st.text_input("Lieu", "Genève")
-    redacteur = st.text_input("Établi par", "Caroline")
+    
+    # --- NOUVEAU : CHOIX DU RÉDACTEUR ---
+    choix_redacteur = st.selectbox("Établi par", ["Caroline", "Autre..."])
+    if choix_redacteur == "Autre...":
+        redacteur = st.text_input("Précise le nom du rédacteur")
+    else:
+        redacteur = choix_redacteur
+    # ------------------------------------
+    
     prochaine_seance = st.text_input("Date prochaine séance", "La semaine prochaine")
     
     st.write("---")
@@ -50,10 +59,11 @@ if 'points' not in st.session_state:
     st.session_state.points = []
 
 # --- 2. PRÉSENCES ---
-st.subheader("👥 2. Présences")
-col_pres, col_exc = st.columns(2)
-presents = col_pres.text_area("Présents (un par ligne)", "Caroline (Maulini)\nReprésentant Weibel SA")
-excuses = col_exc.text_area("Excusés / Absents", "Architecte (en congé)")
+st.subheader("👥 2. Liste des intervenants")
+col_pres, col_exc, col_abs = st.columns(3)
+presents = col_pres.text_area("Présents (un par ligne)", "Caroline\nReprésentant Weibel SA")
+excuses = col_exc.text_area("Excusés (un par ligne)", "Architecte")
+absents = col_abs.text_area("Absents (non excusés)", "")
 
 # --- 3. L'ACTION : AJOUT DES POINTS ---
 st.write("---")
@@ -100,18 +110,18 @@ font = style_normal.font
 font.name = 'Gotham'
 font.size = Pt(11)
 
-# 2. Titre Principal (Centré, grand, couleur gris foncé/bleuté)
+# 2. Titre Principal avec le numéro du PV
 titre = doc.add_heading(level=0)
 titre.alignment = WD_ALIGN_PARAGRAPH.CENTER
-run_titre = titre.add_run("PROCÈS-VERBAL DE SÉANCE")
+run_titre = titre.add_run(f"PROCÈS-VERBAL DE SÉANCE N°{numero_pv}")
 run_titre.font.name = 'Gotham'
 run_titre.font.size = Pt(18)
 run_titre.font.bold = True
-run_titre.font.color.rgb = RGBColor(44, 62, 80) # Bleu-Gris élégant
+run_titre.font.color.rgb = RGBColor(44, 62, 80)
 
 doc.add_paragraph() # Espace
 
-# 3. En-tête informatif (Tableau invisible pour aligner les textes proprement)
+# 3. En-tête informatif
 table_info = doc.add_table(rows=3, cols=2)
 table_info.autofit = True
 # Ligne 1
@@ -119,11 +129,11 @@ table_info.cell(0, 0).text = f"Projet : {nom_projet}"
 table_info.cell(0, 1).text = f"Date : {date_seance.strftime('%d.%m.%Y')}"
 # Ligne 2
 table_info.cell(1, 0).text = f"Lieu : {lieu}"
-table_info.cell(1, 1).text = f"Établi par : {redacteur}"
+# Utilisation de la variable 'redacteur' qui vient du menu déroulant ou du champ texte
+table_info.cell(1, 1).text = f"Établi par : {redacteur}" 
 # Ligne 3
 table_info.cell(2, 0).text = f"Prochaine séance : {prochaine_seance}"
 
-# Mettre en gras les libellés dans le tableau info (un peu de style)
 for row in table_info.rows:
     for cell in row.cells:
         for paragraph in cell.paragraphs:
@@ -137,36 +147,41 @@ for row in table_info.rows:
 doc.add_paragraph() # Espace
 doc.add_paragraph("---") # Ligne de séparation visuelle
 
-# 4. Liste des présences
-p_pres = doc.add_paragraph()
-p_pres.add_run("Présents : \n").bold = True
-p_pres.add_run(presents.replace('\n', ', ') if presents else "Aucun")
+# 4. Liste des présences, excusés et absents
+def ajouter_liste_intervenants(document, titre_liste, contenu):
+    p = document.add_paragraph()
+    p.add_run(f"{titre_liste} : ").bold = True
+    texte_propre = contenu.strip()
+    if texte_propre:
+        p.add_run(texte_propre.replace('\n', ', '))
+    else:
+        p.add_run("Aucun")
 
-p_exc = doc.add_paragraph()
-p_exc.add_run("Excusés : \n").bold = True
-p_exc.add_run(excuses.replace('\n', ', ') if excuses else "Aucun")
+ajouter_liste_intervenants(doc, "Présents", presents)
+ajouter_liste_intervenants(doc, "Excusés", excuses)
+ajouter_liste_intervenants(doc, "Absents", absents)
 
 doc.add_paragraph() # Espace
 
-# 5. Le grand tableau des points (Style épuré mais clair)
+# 5. Le grand tableau des points
 doc.add_heading("Suivi des Actions", level=1)
 table_actions = doc.add_table(rows=1, cols=3)
 table_actions.style = 'Table Grid'
 
-# Styliser la ligne d'en-tête (Gris clair, texte centré et en gras)
+# En-têtes
 hdr_cells = table_actions.rows[0].cells
 en_tetes = ['Responsable', 'Action / Remarque', 'Délai']
 
 for i, text in enumerate(en_tetes):
     hdr_cells[i].text = text
-    set_cell_background(hdr_cells[i], 'EAEAEA') # Fond gris clair (#EAEAEA)
+    set_cell_background(hdr_cells[i], 'EAEAEA') 
     paragraph = hdr_cells[i].paragraphs[0]
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = paragraph.runs[0]
     run.font.bold = True
     run.font.name = 'Gotham'
 
-# Remplissage dynamique des tâches
+# Remplissage des tâches
 for p in st.session_state.points:
     row_cells = table_actions.add_row().cells
     
@@ -179,10 +194,10 @@ for p in st.session_state.points:
     run_action.font.name = 'Gotham'
     
     if p['color'] == "#0000FF":
-        run_action.font.color.rgb = RGBColor(0, 102, 204) # Un beau bleu pro
+        run_action.font.color.rgb = RGBColor(0, 102, 204) # Bleu nouveau point
     else:
         run_action.font.color.rgb = RGBColor(0, 0, 0)
-        run_action.font.bold = True
+        run_action.font.bold = True # Ancien point en noir et gras
         
     # Délai
     p_quand = row_cells[2].paragraphs[0]
@@ -192,7 +207,7 @@ for p in st.session_state.points:
 # Sauvegarde Word
 bio_word = io.BytesIO()
 doc.save(bio_word)
-nom_fichier_word = f"PV_{nom_projet.replace(' ', '_')}_{date_seance.strftime('%Y%m%d')}.docx"
+nom_fichier_word = f"PV_n{numero_pv}_{nom_projet.replace(' ', '_')}_{date_seance.strftime('%Y%m%d')}.docx"
 
 col_word.download_button(
     label="📥 1. Télécharger le PV (Word)", 
